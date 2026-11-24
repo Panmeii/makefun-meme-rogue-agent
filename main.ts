@@ -65,6 +65,7 @@ let width = 0;
 let height = 0;
 let sawIend = false;
 let chunkCount = 0;
+let idatChunks = 0;
 while (offset < data.length) {
   if (offset + 12 > data.length) refuse(`chunk header at byte ${offset} runs past the end of file`);
   const length = data.readUInt32BE(offset);
@@ -78,7 +79,15 @@ while (offset < data.length) {
     if (type !== "IHDR") refuse(`first chunk is ${type}, not IHDR`);
     width = data.readUInt32BE(offset + 8);
     height = data.readUInt32BE(offset + 12);
+    // The picture is drawn as 8-bit RGB: hold the header to that, so a
+    // re-encode into some exotic depth or palette type fails here
+    // instead of confusing the judge's viewer later.
+    const bitDepth = data[offset + 16];
+    const colorType = data[offset + 17];
+    if (bitDepth !== 8) refuse(`IHDR bit depth is ${bitDepth}, not 8`);
+    if (colorType !== 2 && colorType !== 6) refuse(`IHDR color type is ${colorType}, not RGB/RGBA`);
   }
+  if (type === "IDAT") idatChunks += 1;
   if (type === "IEND") {
     if (dataEnd + 4 !== data.length) refuse("bytes follow the IEND chunk");
     sawIend = true;
@@ -87,6 +96,7 @@ while (offset < data.length) {
   offset = dataEnd + 4;
 }
 if (!sawIend) refuse("no IEND chunk: the PNG is not whole");
+if (idatChunks < 1) refuse("no IDAT chunk: the file has a frame but no picture in it");
 if (width < 1 || width > MAX_EDGE || height < 1 || height > MAX_EDGE) {
   refuse(`dimensions ${width}x${height} fall outside 1-${MAX_EDGE} pixels per side`);
 }
